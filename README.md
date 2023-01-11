@@ -1,4 +1,4 @@
-# The-Other-Programming-Language
+# The Other Programming Language
 It's lower level than C but has vectors.
 
 Run
