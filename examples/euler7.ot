@@ -1,0 +1,13 @@
+#Project Euler 7
+
+isprime n:
+    hn = ? n < 10 : n, _ : n / 3
+    @i 2 hn : ? n % i == 0 : >< false
+    true
+
+getprimes v max:
+    i = 1
+    @ (vlen v) < max : ? isprime ++i : vpush v i
+    v
+
+puti vget getprimes vec 10001 10000
