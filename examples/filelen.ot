@@ -1,0 +1,2 @@
+#prints length of a file 
+puti vlen readfile vec vget argv 1
