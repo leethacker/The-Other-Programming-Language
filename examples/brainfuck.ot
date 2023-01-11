@@ -1,0 +1,56 @@
+tape := @[%1^1000]
+prog := @[^1000]
+ti := 500
+pi := 0
+
+dochar c:
+    c ^ '+' : ++tape[ti 1],
+        '-' : --tape[ti 1],
+        '>' : ++ti,
+        '<' : --ti,
+        '.' : putc tape[ti 1],
+        ',' : tape[ti 1] = getc,
+        '[' : (
+            ? tape[ti 1] == 0 : (
+                depth = 1
+                @ depth : (
+                    ++pi
+                    (vget prog pi) ^
+                        '[' : ++depth,
+                        ']' : --depth,
+                        _ : 0
+                )
+            )
+        ),
+        ']' : (
+            depth = 1
+            @ depth : (
+                pi := pi - 1
+                (vget prog pi) ^
+                    '[' : --depth,
+                    ']' : ++depth,
+                    _ : 0
+            )
+            --pi
+        ),
+        _ : 0
+
+loop:
+    pi := 0
+    @ c = vget prog pi : (
+        dochar c
+        ++pi
+    )
+
+run:
+    puts "Enter program:"
+    readline prog
+    loop
+
+runwith p:
+    prog := p
+    vpush prog 0
+    loop
+
+#run
+runwith "--<-<<+[+[<+>--->->->-<<<]>]<<--.<++++++.<<-..<<.<+.>>.>>.<<<.+++.>>.>>-.<<<+."
