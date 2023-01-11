@@ -1,0 +1,8 @@
+eratosieve result max:
+    v = vec
+    @_ max : vpush v 1
+    @i 2 max : @j i*2 max i : vset v j 0
+    @i 2 max : ?vget v i : vpush result i
+    result
+
+putv eratosieve vec 1000
