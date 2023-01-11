@@ -1,0 +1,401 @@
+memstripsize ~ 200000000
+usecmalloc ~ true
+
+<_putchar 1:
+<_getchar:
+
+>true ~ 1
+>false ~ 0
+>newline ~ 10
+>matrix a b ~ @[a *~ (@[^b])]
+
+>record_ i name ~ recordsize = i+1; name v ~ v[i]
+>record ~ record_ @~
+
+>raiimem var len ~ 
+    <_malloc 1:
+    <_free 1:
+    var = _malloc len
+    -> _free var
+
+>newframe args body ~ \!(\args:body)(args)
+
+>vfill v e ~ vpush v e
+>vinit var ~ ((var = _vecnew
+    !>< var
+    -> _vecdel var
+    var))
+>vinits v s ~ 
+    vinit v
+    len = strlen s
+    @_ len : [c s 1] vpush v c
+>vec ~ vinit ?~
+>veci_ name args ~ ((
+    name = vec
+    vfill name
+        args
+
+    name
+))
+>veci ~ veci_ ?~
+
+>argv__ var var2 ~ ((
+    var = vec
+    @i argc_ : [e argv_] (
+        var2 = _vecnew
+        cstov var2 e
+        vpush var var2
+    )
+    var
+))
+>argv ~ argv__ ?~ ?~
+
+>putc c:
+    _putchar c
+    c
+
+<_printf 2:
+printf a b : _printf a b
+
+puti_ n d:
+    putc n / d % 10 + '0'
+    d/10 ^ 0 : putc 10, _ : puti_ n d/10
+puti__ n d:
+    n/d ^ 0 : puti__ n d/10, _ : puti_ n d
+>puti n:
+    ? n < 0 : (
+        putc '-'
+        puti -n
+    ), 
+    _ : n ^ 0 : puti_ 0 1, _ : puti__ n pow 10 19
+    n
+
+writei_ n d:
+    putc n / d % 10 + '0'
+    d/10 ^ 0 : 0, _ : writei_ n d/10
+writei__ n d:
+    n/d ^ 0 : writei__ n d/10, _ : writei_ n d
+>writei n:
+    ? n < 0 : (
+        putc '-'
+        writei -n
+    ), 
+    _ : n ^ 0 : writei_ 0 1, _ : writei__ n 100000000
+    n
+
+strlen s:
+    len = -1
+    @ s[++len 1]:0
+    len
+
+streq a b:
+    ? (strlen a) != strlen b : false,
+    _ : (
+        check = true
+        len = strlen a
+        @ _ len : [ac a 1] [bc b 1] (
+            ? ac != bc : (
+                check = false
+                -@
+            )
+        )
+        check
+    )
+
+>writes s:
+    >< writesv s
+    len = strlen s
+    @ _ len : [c s 1] putc c
+    
+>puts s:
+    writes s
+    putc newline
+
+>itos dest n:
+    ? n == 0 : (
+        vpush dest '0'
+        >< dest
+    )
+    max = 19
+    drawing = false
+    @ < i max 0: (
+        tenpow = pow 10 i-1
+        d = n / tenpow
+        #puti d
+        ? d : drawing = true
+        c = (d % 10) + '0'
+        ? drawing : vpush dest c
+    )
+    dest
+
+>stoi s:
+  l = vlen s
+  tens = 1
+  a = 0
+  @ i l : (
+    c = vget s (l - i - 1)
+    a = a + (c - '0' * tens)
+    tens = tens * 10
+  )
+  a
+
+>getc : _getchar
+
+>readline s:
+    @ (c = getc) - newline : vpush s c
+    s
+
+>sfmt result fmt e:
+    l = (vlen fmt) - 1
+    data = vdata fmt
+    skip = false
+    formatted = false
+    @i l : [c data] (
+        ? skip : skip = false,
+        c == '%' && !formatted : (
+            d = data[i+1]
+            ? d == 's' : (
+                skip = formatted = true
+                vadd result e
+            ), d == 'd' : (
+                skip = formatted = true
+                itos result e
+            ), _ : vpush result c
+        ), _ : vpush result c
+    )
+    ? !skip : vpush result data[i]
+    result
+
+>pow base exp:
+    ? !exp : 1,
+    exp % 2 : base * pow base exp - 1,
+    _ : (
+        var = pow base exp / 2
+        var * var
+    )
+
+>rsh a b : a / pow 2 b
+>lsh a b : a * pow 2 b
+
+
+cellsize ~ 8
+<_sbrk 1:
+memstrip := @[^memstripsize] #@[^100000000]
+
+freshalloc size:
+    result = memstrip
+    memstrip += size + cellsize
+    ? memstrip > (_sbrk 0) - (memstripsize / 2) : (
+        _sbrk memstripsize
+    )
+    result[0] = size
+    result += 8
+    result
+
+getstripsize s : s[-1]
+
+initfreedsize ~ cellsize * 32
+freed := freshalloc initfreedsize
+freedi := 0
+
+free m:
+    <_free 1:
+    ? usecmalloc : >< _free m
+    freed[freedi] = m
+    ++freedi
+    ? freedi * cellsize >= getstripsize freed - cellsize : (
+        freed := reallocnofree \freshalloc freed 2 * getstripsize freed
+    )
+
+alloc size:
+    <_malloc 1:
+    ? usecmalloc : >< _malloc size
+    result = 0
+    @ i 0 freedi : [m freed] (
+        ? m && getstripsize m >= size : (
+            result = m
+            freed[i] = 0
+            -@
+        )
+    )
+    ? !result : result = freshalloc size
+    result
+
+reallocnofree f m size:
+    n = \!f size #was freshalloc
+    max = getstripsize m
+    ? size < max : max = size
+    @ i max : [c m] n[i] = c
+    n
+
+realloc m size:
+    <_realloc 2:
+    ? usecmalloc : >< _realloc m size
+    result = reallocnofree \alloc m size
+    free m
+    result
+
+record
+    vecdata
+    vecsize
+    veccap
+
+>_vecnew:
+    v = alloc 3 * cellsize
+    veccap v = 32#8
+    vecdata v = alloc veccap v * cellsize
+    vecsize v = 0
+    v
+
+>_vecdel v:
+    ? v : (
+        vcheckvalid v
+        free vecdata v
+        #vecdata v = 0
+        veccap v = 0
+        free v
+    )
+
+>vpush v e:
+    vcheckvalid v
+    vecdata v[vecsize v] = e
+    ++vecsize v
+    ? vecsize v >= veccap v - 1 : (
+        veccap v *= 8 #2
+        vecdata v = realloc vecdata v veccap v * cellsize
+    )
+    e
+
+>vremove v ind:
+    vcheckvalid v
+    checkbounds v ind
+    result = vget v ind
+    len = vecsize v
+    @ i ind+1 len : (
+        vecdata v[i-1] = vecdata v[i]
+    )
+    --vecsize v
+    result
+
+>vpop v : vremove v vecsize v
+
+>vclear v : vecsize v = 0
+
+>vdata v:
+    vcheckvalid v
+    vecdata v
+
+>vlen v:
+    vcheckvalid v
+    vecsize v
+
+vcheckvalid v:
+    ? !v || !vecdata v || veccap v < 8 : (
+        writes "ERROR using deleted vector of size "
+        writei vecsize v
+        writes " in memory at "
+        puti v
+        <_exit 1:
+        _exit 1
+    )
+
+checkbounds v i:
+    ? i < 0 || vecsize v <= i : (
+        writes "ERROR Index out of bounds: index "
+        writei i
+        writes " on size "
+        writei vecsize v
+        putc newline
+        <_exit 1:
+        _exit 1
+    )
+
+>vget v i:
+    vcheckvalid v
+    checkbounds v i
+    vecdata v[i]
+
+>vset v i s:
+    vcheckvalid v
+    checkbounds v i
+    vecdata v[i] = s
+
+>vinsert v i e:
+    vpush v 0
+    data = vdata v
+    @ < j (vlen v)-1 i : data[j] = data[j-1]
+    vset v i e
+
+>vadd a b:
+    max = vlen b
+    @i max : vpush a vget b i
+    a
+
+>writev v:
+    vcheckvalid v
+    len = vlen v
+    data = vdata v
+    putc '['
+    @i len-1 : [e data] (
+        writei e
+        putc ' '
+    )
+    writei data[i]
+    putc ']'
+
+>putv v:
+    vcheckvalid v
+    writev v
+    putc newline
+
+>writesv v:
+    vcheckvalid v
+    len = vlen v
+    data = vdata v
+    @i len : [e data] (
+        putc e
+    )
+    v
+
+>putsv v:
+    vcheckvalid v
+    writesv v
+    putc 10
+    v 
+
+>nanos:
+    <times.o
+    <_nanos:
+    _nanos
+
+<file.o
+<_readfile 1:
+<_writefile 2:
+
+vtocs v:
+    size = vlen v
+    cs = alloc size + 1
+    cs[size 1] = 0
+    data = vdata v 
+    @i size : [d data] cs[i 1] = d
+    cs 
+
+>cstov v cs:
+    size = strlen cs
+    @_ size : [c cs 1] vpush v c
+    v 
+
+>readfile v s:
+    cs = vtocs s
+    -> free cs
+    csr = _readfile cs 
+    -> free csr
+    cstov v csr
+    v 
+
+>writefile name s:
+    cn = vtocs name
+    -> free cn
+    cs = vtocs s
+    -> free cs
+    _writefile cn cs
