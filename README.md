@@ -30,3 +30,15 @@ Strings are vectors in Other. Vectors have special standard library functions th
 You can initialize vectors with vec which is useful for functions that take in a vector to fill.
 
     puts readfile vec "helloworld.ot"
+
+Public Other functions start with > in their declaration.
+
+    >getc:
+    
+Importing files is done with <
+
+    <somefile.ot
+    
+The ^ operator works like a switch case.
+
+    factorial n : n ^ 0 : 1, _ : n * factorial n - 1
