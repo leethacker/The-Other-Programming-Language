@@ -1,8 +1,6 @@
 # The Other Programming Language
 It's lower level than C but has vectors.
 
-Setup: Install NASM using your package manager if you don't have it already.
-
 Run
 
     python3 ./src/otherc.py otherfilename
