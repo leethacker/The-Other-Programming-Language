@@ -1,8 +1,8 @@
 memstripsize ~ 200000000
 usecmalloc ~ true
 
-<_putchar 1:
-<_getchar:
+#<_putchar 1:
+#<_getchar:
 
 >true ~ 1
 >false ~ 0
@@ -50,8 +50,23 @@ usecmalloc ~ true
 ))
 >argv ~ argv__ ?~ ?~
 
->putc c:
-    _putchar c
+syscall ~ \!\syscall_
+syscall_ sysnum a b c d e f:
+    %{
+        mov rax, rdi
+        mov rdi, rsi
+        mov rsi, rdx
+        mov rdx, rcx
+        mov rcx, r8
+        mov r8, r9
+        add rax, 0x2000000
+        syscall
+    }
+
+>putc c: 
+    s = @[%1^1]
+    s[0 1] = c
+    syscall(4 1 s 1)
     c
 
 <_printf 2:
@@ -111,17 +126,18 @@ streq a b:
     writes s
     putc newline
 
->itos dest n:
+>itos ~ vitos""
+>vitos dest n:
     ? n == 0 : (
         vpush dest '0'
         >< dest
     )
     max = 19
     drawing = false
-    @ < i max 0: (
+    @ j 0 max: (
+        i = max - j
         tenpow = pow 10 i-1
         d = n / tenpow
-        #puti d
         ? d : drawing = true
         c = (d % 10) + '0'
         ? drawing : vpush dest c
@@ -139,13 +155,18 @@ streq a b:
   )
   a
 
->getc : _getchar
+>getc:
+    s = @[%1^1]
+    syscall(3 0 s 1)
+    s[0 1]
 
->readline s:
+>readline ~ vreadline""
+>vreadline s:
     @ (c = getc) - newline : vpush s c
     s
 
->sfmt result fmt e:
+>sfmt ~ vsfmt"" 
+>vsfmt result fmt e:
     l = (vlen fmt) - 1
     data = vdata fmt
     skip = false
@@ -159,7 +180,7 @@ streq a b:
                 vadd result e
             ), d == 'd' : (
                 skip = formatted = true
-                itos result e
+                vitos result e
             ), _ : vpush result c
         ), _ : vpush result c
     )
@@ -177,63 +198,9 @@ streq a b:
 >rsh a b : a / pow 2 b
 >lsh a b : a * pow 2 b
 
+<alloc.ot
 
-cellsize ~ 8
-<_sbrk 1:
-memstrip := @[^memstripsize] #@[^100000000]
-
-freshalloc size:
-    result = memstrip
-    memstrip += size + cellsize
-    ? memstrip > (_sbrk 0) - (memstripsize / 2) : (
-        _sbrk memstripsize
-    )
-    result[0] = size
-    result += 8
-    result
-
-getstripsize s : s[-1]
-
-initfreedsize ~ cellsize * 32
-freed := freshalloc initfreedsize
-freedi := 0
-
-free m:
-    <_free 1:
-    ? usecmalloc : >< _free m
-    freed[freedi] = m
-    ++freedi
-    ? freedi * cellsize >= getstripsize freed - cellsize : (
-        freed := reallocnofree \freshalloc freed 2 * getstripsize freed
-    )
-
-alloc size:
-    <_malloc 1:
-    ? usecmalloc : >< _malloc size
-    result = 0
-    @ i 0 freedi : [m freed] (
-        ? m && getstripsize m >= size : (
-            result = m
-            freed[i] = 0
-            -@
-        )
-    )
-    ? !result : result = freshalloc size
-    result
-
-reallocnofree f m size:
-    n = \!f size #was freshalloc
-    max = getstripsize m
-    ? size < max : max = size
-    @ i max : [c m] n[i] = c
-    n
-
-realloc m size:
-    <_realloc 2:
-    ? usecmalloc : >< _realloc m size
-    result = reallocnofree \alloc m size
-    free m
-    result
+regsize ~ 8
 
 record
     vecdata
@@ -241,9 +208,9 @@ record
     veccap
 
 >_vecnew:
-    v = alloc 3 * cellsize
+    v = alloc 3 * regsize
     veccap v = 32#8
-    vecdata v = alloc veccap v * cellsize
+    vecdata v = alloc veccap v * regsize
     vecsize v = 0
     v
 
@@ -262,7 +229,7 @@ record
     ++vecsize v
     ? vecsize v >= veccap v - 1 : (
         veccap v *= 8 #2
-        vecdata v = realloc vecdata v veccap v * cellsize
+        vecdata v = realloc vecdata v veccap v * regsize
     )
     e
 
@@ -326,6 +293,7 @@ checkbounds v i:
     @ < j (vlen v)-1 i : data[j] = data[j-1]
     vset v i e
 
+>vcpy ~ vadd""
 >vadd a b:
     max = vlen b
     @i max : vpush a vget b i
@@ -363,10 +331,28 @@ checkbounds v i:
     putc 10
     v 
 
+>sum s:r=0@i vlen s:r+=vget s i
+
+>prod s:r=1@i vlen s:r*=vget s i
+
+>range ~ vrange""
+>vrange s a b:
+    @i a b: vpush s i
+    s
+
+>drop ~ vdrop""
+>vdrop r l s:
+    vadd r s
+    @_ l : vremove r 0
+    r
+
+>map ~ vmap""
+>vmap r f v: l=vlen v @i l: vpush r \!f(vget v i)r 
+
 >nanos:
-    <times.o
-    <_nanos:
-    _nanos
+    buf = @[^2]
+    syscall(116 buf 0)
+    buf[1] * 1000
 
 <file.o
 <_readfile 1:
@@ -385,11 +371,13 @@ vtocs v:
     @_ size : [c cs 1] vpush v c
     v 
 
->readfile v s:
+>readfile ~ vreadfile""
+>vreadfile v s:
     cs = vtocs s
     -> free cs
     csr = _readfile cs 
-    -> free csr
+    <_free 1:
+    -> _free csr
     cstov v csr
     v 
 

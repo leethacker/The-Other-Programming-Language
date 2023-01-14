@@ -39,7 +39,7 @@ def toint(n):
     return int(n)
 
 def gettokens(s):
-    result = re.findall(r'###[^#]*###|#[^\n]*\n ?|[\w]+|\'.\'|\-\>|\+\+|\-\-|==|!=|>=|<=|\\!|\+=|\-=|\*=|\-@|\-~|\+~|\*~|\?~|@~|:=|&&|\|\||><|!><|~ *\(\)|"[^"]*"|`[^`]*`|\S|\n |\n', s)
+    result = re.findall(r'###[^#]*###|#[^\n]*\n ?|%\{[^\}]*\}|%r[\w]+|[\w]+|\'.\'|\-\>|\+\+|\-\-|==|!=|>=|<=|\\!|\+=|\-=|\*=|\-@|\-~|\+~|\*~|\?~|@~|:=|&&|\|\||><|!><|~ *\(\)|"[^"]*"|`[^`]*`|\S|\n |\n', s)
     result = [r if r[0] != '#' else '\n' + (' ' if r[-1] == ' ' else '') for r in result]
     nr = []
     lastt = '\n'
@@ -604,6 +604,7 @@ def dovstr():
         elif c == '\\' : escaped = True
         newtokens += [str(val), ';']
     newtokens += [';', ';', l, ')']
+    if len(s) == 0 : newtokens = ['vec']
     tokens += newtokens[::-1]
     return term()
 
@@ -660,6 +661,12 @@ def isvar(v):
 def unretmap():
     return {varloc(v) : v for v in unreturnables if isvar(v)}
 
+def doasm():
+    block = getok()
+    asm = block[2:-1]
+    out(asm)
+    return retreg
+
 def term():
     if isint(toptok()) : result = getok()
     elif toptok() == '(' : result = doparens()
@@ -675,7 +682,8 @@ def term():
     elif toptok() == '->' : result = dodefer()
     #elif toptok() == '-~' : result = doln()
     elif toptok()[0] == '"' and toptok()[-1] == '"' : result = dovstr()
-    elif toptok()[0] == '`' and toptok()[-1] == '`' : result = dovstr()
+    elif toptok()[0] == '`' and toptok()[-1] == '`' : result = dostr()
+    elif toptok()[0:2] == '%{' : result = doasm()
     elif isvar(toptok()) : result = dovar() 
     elif toptok() in funcs : result = docall() 
     elif toptok() in callables : result = docall()
@@ -1609,6 +1617,7 @@ _putchar \! fp ('0' 3)
 """
 def default(filename):
     start(filename)
+    runbash('gcc -c file.c')
     ofiles = ' '.join([s + '.o' for s in asmfiles] + objfiles)
     runbash(f'clang -Wl,-no_pie -o {asmfiles[0]} {ofiles}')
 
