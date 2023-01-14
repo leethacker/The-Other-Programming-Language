@@ -11,7 +11,7 @@ to compile Other programs.
 
 Strings are vectors in Other. Vectors have special standard library functions that begin with v.
 
-    putc vget "hi" 0 #will print c
+    putc vget "hi" 0 #will print h
 
 You can initialize vectors with vec which is useful for functions that take in a vector to fill.
 
