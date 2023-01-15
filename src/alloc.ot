@@ -1,0 +1,71 @@
+cmalloc ~ false
+
+rsize ~ 8
+cellsize ~ 16
+
+mem := @[^20000000000]
+memi := 0
+freelist := 0
+freecells := 0
+
+>alloc size:
+    <_malloc 1:
+    ? cmalloc : >< _malloc size
+    r = getfreed size
+    ? r : r, _ : mallocfresh size
+
+mallocfresh size:
+    r = mem
+    mi = memi
+    r += mi
+    mi += size + rsize
+    memi := mi
+    r[0] = size
+    r += rsize
+    r
+
+>free mem:
+    <_free 1:
+    ? cmalloc : >< _free mem
+    nl = popcell
+    l = freelist
+    nl[0] = mem
+    nl[1] = l
+    freelist := nl
+
+getfreed size:
+    pl = 0
+    l = freelist
+    @ l : (
+        s = l[0]
+        ? size <= s[-1] : (
+            ? pl : pl[1] = l[1],
+            _ : freelist := l[1]
+            pushcell l 
+            >< s
+        )
+        pl = l 
+        l = l[1]
+    )
+    0
+
+pushcell c:
+    l = freecells
+    c[1] = l
+    freecells := c
+
+popcell:
+    l = freecells
+    ? l : (
+        freecells := l[1]
+        l
+    ), _ : mallocfresh cellsize
+
+>realloc m size:
+    <_realloc 2:
+    ? cmalloc : >< _realloc m size
+    msize = m[-1]
+    max = ? msize < size : msize, _ : size
+    result = alloc size
+    @i max : [d m] result[i] = d
+    result

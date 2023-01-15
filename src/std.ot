@@ -1,9 +1,3 @@
-memstripsize ~ 200000000
-usecmalloc ~ true
-
-#<_putchar 1:
-#<_getchar:
-
 >true ~ 1
 >false ~ 0
 >newline ~ 10
@@ -244,7 +238,7 @@ record
     --vecsize v
     result
 
->vpop v : vremove v vecsize v
+>vpop v : vremove v (vecsize v) - 1
 
 >vclear v : vecsize v = 0
 
@@ -353,6 +347,10 @@ checkbounds v i:
     buf = @[^2]
     syscall(116 buf 0)
     buf[1] * 1000
+
+>sleep n:
+    <_sleep 1:
+    _sleep n
 
 <file.o
 <_readfile 1:
