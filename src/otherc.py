@@ -22,3 +22,4 @@ def copyover(fname):
 for f in imports : copyover(f)
 other.default(fname)
 shutil.copyfile(f'{othercdir}/{fnamenodot}', f'{cwd}/{fnamenodot}')
+os.chmod(f'{cwd}/{fnamenodot}', 0o755)

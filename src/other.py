@@ -1,6 +1,7 @@
 import re
 import sys
 import subprocess
+import os
 
 tocompile = []
 compiled = []
@@ -53,10 +54,10 @@ def gettokens(s):
 def err(s):
     m = ''
     if inmacro : m = f' in macro {inmacro[-1]}'
-    snip = ' '.join(prevtoks[-5:]) + ' ' + ' '.join(tokens[::-1][:3])
-    print(f"Error at line {ln}{m}: {s} in '{snip}'")
-    int('a')
-    sys.exit(0)
+    snip = ' '.join(tokens[::-1][:5]) #prevtoks[-5:]) + ' ' + 
+    print(f"Error at line {ln}{m}: {s} before '{snip}'")
+    #int('a')
+    sys.exit(1)
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
@@ -602,7 +603,7 @@ def dovstr():
             escaped = False
             newtokens += [str(val), ';']
         elif c == '\\' : escaped = True
-        newtokens += [str(val), ';']
+        else : newtokens += [str(val), ';']
     newtokens += [';', ';', l, ')']
     if len(s) == 0 : newtokens = ['vec']
     tokens += newtokens[::-1]
@@ -684,6 +685,7 @@ def term():
     elif toptok()[0] == '"' and toptok()[-1] == '"' : result = dovstr()
     elif toptok()[0] == '`' and toptok()[-1] == '`' : result = dostr()
     elif toptok()[0:2] == '%{' : result = doasm()
+    elif toptok() == '!' : result = donot()
     elif isvar(toptok()) : result = dovar() 
     elif toptok() in funcs : result = docall() 
     elif toptok() in callables : result = docall()
@@ -725,17 +727,17 @@ def infix():
     accum = None
     while toptok() in opmap or toptok() in divopmap:
         if not accum:
-            accum = getfreereg([e])
-            movto(accum, e)
+            accum = genvar()#getfreereg([e])
+            movto(varloc(accum), e)
         op = getok()
         e = term()
-        if not e in allregs:
+        if False and not e in allregs:
             r = getfreereg()
             out(f'mov {r}, {e}')
             e = r
-        if op in opmap : out(f'{opmap[op]} {accum}, {e} ; infix op')
-        elif op in divopmap : dodivop(op, accum, e)
-        e = accum
+        if op in opmap : out(f'{opmap[op]} {varloc(accum)}, {e} ; infix op')
+        elif op in divopmap : dodivop(op, varloc(accum), e)
+        e = varloc(accum)
     return e
 
 def donot():
@@ -829,6 +831,12 @@ def door():
     outlabel(finishedlabel)
     return retreg
 
+def genvar():
+    v = newlabel("var")
+    r = getfreereg()
+    variables[v] = r
+    return v
+
 def doif():
     global variables
     global freeregs
@@ -880,9 +888,11 @@ def doif():
                 freereg(n)
                 out(f'je {nxtcmp}')
                 freeregs = oldfreeregs[:]
+                savevars()
                 r = expr()
                 movto(retreg, r)
                 dodeferblocks()
+                restorevars()
                 deferblocks = []
                 out(f'jmp {exitl}')
                 freeregs = oldfreeregs[:]
@@ -892,9 +902,11 @@ def doif():
                 outlabel(nxtcmp)
             getok()
             match(':')
+            savevars()
             r = expr()
-            dodeferblocks()
             movto(retreg, r)
+            dodeferblocks()
+            restorevars()
         variables = oldvars.copy()
         outlabel(exitl)
         deferblocks = olddeferblocks
@@ -927,10 +939,13 @@ def domatch():
             match(':')
             out(f'cmp {e}, {n}')
             out(f'jne {nxtcmp}')
+            savevars()
             r = expr()
             movto(retreg, r)
             dodeferblocks()
+            restorevars()
             out(f'jmp {exitl}')
+            skipnl()
             match(',')
             while toptok() == '\n ' : getok()
             variables = oldvars.copy()
@@ -938,9 +953,11 @@ def domatch():
             freeregs = oldfreeregs[:]
         getok()
         match(':')
+        savevars()
         r = expr()
         movto(retreg, r)
         dodeferblocks()
+        restorevars()
         variables = oldvars.copy()
         outlabel(exitl)
         freeregs = oldfreeregs[:]
@@ -1004,7 +1021,7 @@ def dodeferblocks():
         stk.append(None)
         #for d in defers[::-1]:
         #    out(f'call {d}')    
-        for d in deferblocks:
+        for d in deferblocks[::-1]:
             tokens += d[::-1]
             startline()
         stk.pop()
@@ -1153,6 +1170,24 @@ def doarr():
     out(f'mov {retreg}, {arrname}')
     return retreg
 
+oldvarsstk = []
+oldstkstk = []
+def savevars():
+    oldvarsstk.append(variables.copy())
+    oldstkstk.append(stk[:])
+
+def restorevars():
+    global stk
+    global variables
+    oldvars = oldvarsstk.pop()
+    oldstk = oldstkstk.pop()
+    for v, r in oldvars.items():
+        if v in stk:
+            out(f'mov {r}, {varloc(v)}')
+    out(f'add rsp, {(len(stk) - len(oldstk)) * 8}')
+    variables = oldvars
+    stk = oldstk
+
 def doloop():
     global deferblocks
     olddeferblocks = deferblocks[:]
@@ -1184,8 +1219,10 @@ def doloop():
             popreg(ri)
         out(f'test {ri}, {ri}')
         out(f'je {loopexit}')
+        savevars()
         result = startline()
         dodeferblocks()
+        restorevars()
         out(f'jmp {whilestart}')
         outlabel(loopexit)
     else:
@@ -1196,6 +1233,8 @@ def doloop():
             start = end
             end = expr()
         end = movtoreg(end)
+        endvar = newlabel('end')
+        variables[endvar] = end
         if toptok() != ':':
             step = expr()
         match(':')
@@ -1207,15 +1246,19 @@ def doloop():
             getok()
             ve = getvar()
             arr = expr()
+            arr = movtoreg(arr)
             cell = '8'
             if toptok() != ']' : cell = getint()
             out(f'mov {varloc(ve)}, [{arr} + {ri} * {cell}]')
+            freereg(arr)
             if cell == '1' : out(f'and {varloc(ve)}, 0xff')
             match(']')
+        savevars()
         result = startline()
         dodeferblocks()
+        restorevars()
         out(f'{"add" if dirup else "sub"} {ri}, {step}')
-        out(f'cmp {ri}, {end}')
+        out(f'cmp {ri}, {varloc(endvar)}')
         out(f'j{"l" if dirup else "g"} {loopstart}')
         outlabel(loopexit)
     breaklist.pop()
@@ -1432,11 +1475,12 @@ def startline(toplevel=False):
         elif toptok() == ':=' : result = doglobalassign(name, toplevel=toplevel)
     #print(variables)
     e = expr() if result == None else result
-    for r in pushedregs[::-1]:
-        if assigned and r == varloc(name):
-            stk.pop()
-            out('add rsp, 8')
-        else : popreg(r)
+    if False:
+        for r in pushedregs[::-1]:
+            if assigned and r == varloc(name):
+                stk.pop()
+                out('add rsp, 8')
+            else : popreg(r)
     if result != None : return result
     for v in variables:
         r = varloc(v)
@@ -1508,7 +1552,7 @@ def start(filename, isfirst=True):
         while len(tokens) > 1 and toptok()[0] == '\n' : getok()
     for d in defers[::-1]:
         out(f'call {d}')
-    for d in deferblocks:
+    for d in deferblocks[::-1]:
         tokens += d[::-1]
         startline()
     out('extern _exit')
@@ -1541,85 +1585,10 @@ def runbash(bashCommand, nowarnings=True):
     s = '\n'.join([l for l in s.split('\n') if not 'warning' in l and len(l) > 1])
     sys.stdout.write(s)
     
-
-prog = """
-<_putchar c:
-f n:                # function f takes arg n
-  n ^               # match statement
-    0 : 1,          # if n is 0 return 1
-    _ : n * f n - 1 # default to factorial algorithm
-
-_putchar '0' + f 3
-"""
-
-prog = """
-puti_ n d:
-    <_putchar c:
-    _putchar n / d % 10 + '0'
-    d/10 ^ 0 : _putchar 10, _ : puti_ n d/10
-puti__ n d:
-    n/d ^ 0 : puti__ n d/10, _ : puti_ n d
-puti n : n ^ 0 : puti_ 0 9, _ : puti__ n 10000000000
-
-f n:                # function f takes arg n
-  n ^               # match statement
-    0 : 1,          # if n is 0 return 1
-    _ : n * f n - 1 # default to factorial algorithm
-
-double x ~ (x * 2)
-
-test n:
-    ? n : puti 0
-    ? n : 42, _ : 7
-
-func:
-    -> puti 42
-    -> puti 64
-    a = @[% 1 ^ 20 : len]
-    puti len
-
-fun a b:
-    puti a
-    puti b
-
-read s:
-    <_getchar:
-    i = -1
-    @ (c = _getchar) - 10 : s[++i 1] = c
-    s[++i 1] = 0
-
-readtest:
-    s = @[%1^1000]
-    read s
-    <_puts:
-    _puts s
-
-readtest
-"""
-
-prog = """
-<_puts s:
->add1 a : a + 1
-str args ~ @[% 1 args]
-s = str('h' 'i' '!')
-
-<_putchar c:
-a = @[1 2+2 3]
-_putchar '0' + a[1]
-
-"""
-
-prog = r"""
-<_putchar c:
-f a b : a + b
-fp = \f
-_putchar \! fp ('0' 3)
-"""
 def default(filename):
     start(filename)
-    runbash('gcc -c file.c')
+    if not os.path.isfile('file.o') : runbash('clang -c file.c')
     ofiles = ' '.join([s + '.o' for s in asmfiles] + objfiles)
     runbash(f'clang -Wl,-no_pie -o {asmfiles[0]} {ofiles}')
-
 
 if __name__ == '__main__' : default(sys.argv[1])

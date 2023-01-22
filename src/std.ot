@@ -1,3 +1,13 @@
+>for ~ @
+>array ~ @
+>defer ~ ->
+>begin ~ :(
+>end ~ )
+>if ~ ?
+>else ~ ),_:(
+>elif ~ ),_:?
+
+
 >true ~ 1
 >false ~ 0
 >newline ~ 10
@@ -150,12 +160,17 @@ streq a b:
   a
 
 >getc:
+    system "/bin/stty raw"
     s = @[%1^1]
     syscall(3 0 s 1)
-    s[0 1]
+    system "/bin/stty cooked"
+    c = s[0 1]
+    ? c == 13 : c = newline
+    putc c 
+    c
 
->readline ~ vreadline""
->vreadline s:
+readline ~ vreadline""
+vreadline s:
     @ (c = getc) - newline : vpush s c
     s
 
@@ -175,6 +190,9 @@ streq a b:
             ), d == 'd' : (
                 skip = formatted = true
                 vitos result e
+            ), d == 'c' : (
+                skip = formatted = true
+                vpush result e
             ), _ : vpush result c
         ), _ : vpush result c
     )
@@ -189,8 +207,21 @@ streq a b:
         var * var
     )
 
->rsh a b : a / pow 2 b
->lsh a b : a * pow 2 b
+>rsh a b:
+    #a / pow 2 b
+    %{
+        mov     eax, edi
+        mov     ecx, esi
+        sar     eax, cl
+    }
+
+>lsh a b:
+    #a * pow 2 b
+    %{
+        mov     eax, edi
+        mov     ecx, esi
+        sal     eax, cl
+    }
 
 <alloc.ot
 
@@ -293,6 +324,12 @@ checkbounds v i:
     @i max : vpush a vget b i
     a
 
+>vcontains v e:
+    l = vlen v 
+    d = vdata v
+    @_ l : [f d] ? f == e : >< true
+    false
+
 >writev v:
     vcheckvalid v
     len = vlen v
@@ -343,6 +380,17 @@ checkbounds v i:
 >map ~ vmap""
 >vmap r f v: l=vlen v @i l: vpush r \!f(vget v i)r 
 
+>nvec_ name ~ ((
+    name = vec
+    -> @_ vlen name : [d vdata name] _vecdel d
+    name))
+>nvec ~ nvec_ ?~
+
+>nvpush v e:
+    r = _vecnew
+    vadd r e 
+    vpush v r 
+
 >nanos:
     buf = @[^2]
     syscall(116 buf 0)
@@ -385,3 +433,14 @@ vtocs v:
     cs = vtocs s
     -> free cs
     _writefile cn cs
+
+>input ~ vinput""
+>vinput v s:
+    writes s 
+    vreadline v
+
+>system s:
+    <_system 1:
+    cs = vtocs s 
+    -> free cs 
+    _system cs 
