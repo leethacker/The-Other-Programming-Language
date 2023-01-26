@@ -13,9 +13,9 @@ Strings are vectors in Other. Vectors have special standard library functions th
 
     putc vget "hi" 0 #will print h
 
-You can initialize vectors with vec which is useful for functions that take in a vector to fill.
+Other has very simple functions for reading files.
 
-    puts readfile vec "helloworld.ot"
+    puts readfile "helloworld.ot"
 
 Public Other functions start with > in their declaration.
 
